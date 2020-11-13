@@ -3,15 +3,11 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
-import bisect
 import difflib
 import gc
-import http.client
 import hashlib
 import heapq
-import lz4.frame
 import math
-import mmap
 import operator
 import os
 import re
@@ -19,25 +15,24 @@ import sqlite3
 import sys
 import tempfile
 import threading
-import time
-import xxhash
-import numpy as np
 import uuid
-
-from copy import deepcopy
-from fasteners import InterProcessLock
 from itertools import cycle, islice, chain, product, tee
 from numbers import Number
 from time import sleep
 
-from pymagnitude.converter_shared import DEFAULT_NGRAM_END
-from pymagnitude.converter_shared import BOW, EOW
-from pymagnitude.converter_shared import CONVERTER_VERSION
-from pymagnitude.converter_shared import fast_md5_file
-from pymagnitude.converter_shared import char_ngrams
-from pymagnitude.converter_shared import norm_matrix
-from pymagnitude.converter_shared import KeyList
-from pymagnitude.light.repoze.lru import lru_cache
+import lz4.frame
+import numpy as np
+import xxhash
+from fasteners import InterProcessLock
+
+from pymagnitudelight.converter_shared import BOW, EOW
+from pymagnitudelight.converter_shared import CONVERTER_VERSION
+from pymagnitudelight.converter_shared import DEFAULT_NGRAM_END
+from pymagnitudelight.converter_shared import KeyList
+from pymagnitudelight.converter_shared import char_ngrams
+from pymagnitudelight.converter_shared import fast_md5_file
+from pymagnitudelight.converter_shared import norm_matrix
+from pymagnitudelight.framework.repoze.lru import lru_cache
 
 try:
     from itertools import imap
@@ -92,7 +87,6 @@ _log.disable_message = False
 
 
 class Magnitude(object):
-
     NGRAM_BEG = 1
     NGRAM_END = DEFAULT_NGRAM_END
     BOW = BOW
@@ -271,7 +265,7 @@ class Magnitude(object):
                     You can pass `supress_warnings=True` to the constructor to
                     hide this message.""")  # noqa
                 sys.stdout.flush()
-            from pymagnitude.converter_shared import convert as convert_vector_file  # noqa
+            from pymagnitudelight.converter_shared import convert as convert_vector_file  # noqa
             self.path = convert_vector_file(self.path)
 
         # Open a read-only file descriptor against the file
@@ -287,17 +281,17 @@ class Magnitude(object):
             .fetchall()
         self.version = version_query[0][0] if len(version_query) > 0 else 1
         if ngram_oov is None:
-            self.ngram_oov = not(self._is_lm())
+            self.ngram_oov = not (self._is_lm())
         else:
             self.ngram_oov = ngram_oov
         if normalized is None:
-            self.normalized = not(self._is_lm())
+            self.normalized = not (self._is_lm())
         else:
             self.normalized = normalized
             if not self.normalized:
                 try:
                     self._db().execute(
-                        "SELECT magnitude FROM magnitude LIMIT 1")\
+                        "SELECT magnitude FROM magnitude LIMIT 1") \
                         .fetchall()
                 except BaseException:
                     raise RuntimeError(
@@ -323,7 +317,7 @@ class Magnitude(object):
         self.subword = len(subword_query) > 0 and subword_query[0][0]
         if self.subword:
             self.subword_start = self._db().execute(
-                "SELECT value FROM magnitude_format WHERE key='subword_start'")\
+                "SELECT value FROM magnitude_format WHERE key='subword_start'") \
                 .fetchall()[0][0]
             self.subword_end = self._db().execute(
                 "SELECT value FROM magnitude_format WHERE key='subword_end'") \
@@ -382,6 +376,7 @@ class Magnitude(object):
             @lru_cache(None, real_func=self._key_for_index, remove_self=True)
             def _key_for_index_cached(*args, **kwargs):
                 return self._key_for_index(*args, **kwargs)
+
             self._vector_for_key_cached = _vector_for_key_cached
             self._out_of_vocab_vector_cached = _out_of_vocab_vector_cached
             self._key_for_index_cached = _key_for_index_cached
@@ -414,6 +409,7 @@ class Magnitude(object):
                 remove_self=True)
             def _key_for_index_cached(*args, **kwargs):
                 return self._key_for_index(*args, **kwargs)
+
             self._vector_for_key_cached = _vector_for_key_cached
             self._out_of_vocab_vector_cached = _out_of_vocab_vector_cached
             self._key_for_index_cached = _key_for_index_cached
@@ -658,7 +654,7 @@ class Magnitude(object):
                     LIMIT ?;
                 """  # noqa
                 while (len(results) < topn and
-                        current_subword_start >= self.subword_start):
+                       current_subword_start >= self.subword_start):
                     ngrams = list(char_ngrams(
                         key, current_subword_start, current_subword_start))
                     ngram_limit_map = {
@@ -719,8 +715,8 @@ class Magnitude(object):
 
     def _process_lm_output(self, q, normalized):
         """Process the output from a language model"""
-        zero_d = not(isinstance(q, list))
-        one_d = not(zero_d) and (len(q) == 0 or not(isinstance(q[0], list)))
+        zero_d = not (isinstance(q, list))
+        one_d = not (zero_d) and (len(q) == 0 or not (isinstance(q[0], list)))
         if normalized:
             if zero_d:
                 r_val = r_val / np.linalg.norm(r_val)
@@ -822,13 +818,13 @@ class Magnitude(object):
         if is_str:
             random_vector = random_vector / np.linalg.norm(random_vector)
             final_vector = (
-                random_vector *
-                0.3 +
-                self._db_query_similar_keys_vector(
-                    key,
-                    orig_key,
-                    normalized=normalized) *
-                0.7)
+                    random_vector *
+                    0.3 +
+                    self._db_query_similar_keys_vector(
+                        key,
+                        orig_key,
+                        normalized=normalized) *
+                    0.7)
             if normalized:
                 final_vector = final_vector / np.linalg.norm(final_vector)
         else:
@@ -858,18 +854,18 @@ class Magnitude(object):
             vec = np.zeros((self.dim,), dtype=self.dtype)
             vec[0:self.emb_dim] = result[0:self.emb_dim]
             if normalized:
-                rv = vec / float(10**self.precision)
+                rv = vec / float(10 ** self.precision)
             else:
-                rv = vec * (float(result[-1]) / float(10**self.precision))
+                rv = vec * (float(result[-1]) / float(10 ** self.precision))
         else:
             if normalized:
-                rv = [v / float(10**self.precision)
+                rv = [v / float(10 ** self.precision)
                       for v in islice(result, self.emb_dim)] + \
-                    [0.0] * self.placeholders
+                     [0.0] * self.placeholders
             else:
-                rv = [v * (float(result[-1]) / float(10**self.precision))
+                rv = [v * (float(result[-1]) / float(10 ** self.precision))
                       for v in islice(result, self.emb_dim)] + \
-                    [0.0] * self.placeholders
+                     [0.0] * self.placeholders
         return rv
 
     def _db_full_result_to_vec(self, result, put_cache=True, normalized=None):
@@ -929,12 +925,12 @@ class Magnitude(object):
                     if result_key_t in unseen_keys_map:
                         i = unseen_keys_map[result_key_t]
                         if (
-                            (result_key_t not in seen_keys or
-                             result_key == unseen_keys[i]) and
+                                (result_key_t not in seen_keys or
+                                 result_key == unseen_keys[i]) and
 
-                            (
-                                self.case_insensitive or
-                                result_key == unseen_keys[i])
+                                (
+                                        self.case_insensitive or
+                                        result_key == unseen_keys[i])
                         ):
                             seen_keys.add(result_key_t)
                             unseen_vectors[i] = vec
@@ -990,7 +986,8 @@ class Magnitude(object):
         """Queries the database for the keys of multiple indices."""
         unseen_indices = tuple(int(index + 1) for index in indices
                                if self._key_for_index_cached._cache.get(((index,),  # noqa
-                                                                         frozenset([('return_vector', return_vector)]))) is None)  # noqa
+                                                                         frozenset([('return_vector',
+                                                                                     return_vector)]))) is None)  # noqa
         unseen_indices_map = {}
         if len(unseen_indices) > 0:
             columns = "key"
@@ -1149,8 +1146,10 @@ class Magnitude(object):
     def _query_is_cached(self, key, normalized=None):
         """Checks if the query been cached by Magnitude."""
         normalized = normalized if normalized is not None else self.normalized
-        return ((self._vector_for_key_cached._cache.get((key, frozenset([('normalized', normalized)]))) is not None) or (  # noqa
-            self._out_of_vocab_vector_cached._cache.get((key, frozenset([('normalized', normalized)]))) is not None))  # noqa
+        return ((self._vector_for_key_cached._cache.get(
+            (key, frozenset([('normalized', normalized)]))) is not None) or (  # noqa
+                        self._out_of_vocab_vector_cached._cache.get(
+                            (key, frozenset([('normalized', normalized)]))) is not None))  # noqa
 
     @lru_cache(DEFAULT_LRU_CACHE_SIZE, ignore_unhashable_args=True)
     def distance(self, key, q):
@@ -1216,7 +1215,7 @@ class Magnitude(object):
             effort=1.0):
         """Runs a database query to find vectors close to vector."""
         COSMUL = method == '3cosmul'  # noqa: N806
-        DISTANCE = not COSMUL # noqa: N806
+        DISTANCE = not COSMUL  # noqa: N806
 
         exclude_keys = {self._key_t(exclude_key)
                         for exclude_key in exclude_keys}
@@ -1236,15 +1235,15 @@ class Magnitude(object):
                 axis=0)
             if len(negative) > 0:
                 negative_vecs = -1.0 * \
-                    np.sum(self._query_numpy(
-                        negative,
-                        contextualize=True,
-                        normalized=True),
-                        axis=0)
+                                np.sum(self._query_numpy(
+                                    negative,
+                                    contextualize=True,
+                                    normalized=True),
+                                    axis=0)
             else:
                 negative_vecs = np.zeros((self.dim,), dtype=self.dtype)
             mean_vector = (positive_vecs + negative_vecs) / \
-                float(len(positive) + len(negative))
+                          float(len(positive) + len(negative))
             mean_unit_vector = mean_vector / np.linalg.norm(mean_vector)
         elif (DISTANCE):
             mean_unit_vector = self._query_numpy(
@@ -1275,8 +1274,8 @@ class Magnitude(object):
                         for vec in negative_vecs
                     ]
                     similiarities = (
-                        np.prod(positive_similiarities, axis=0) /
-                        (np.prod(negative_similiarities, axis=0) + 0.000001))
+                            np.prod(positive_similiarities, axis=0) /
+                            (np.prod(negative_similiarities, axis=0) + 0.000001))
 
                 partition_results = np.argpartition(similiarities, -1 * min(
                     filter_topn, self.batch_size, self.length))[-filter_topn:]
@@ -1325,23 +1324,23 @@ class Magnitude(object):
                 positive,
                 list) or (
                 len(positive) > 0 and isinstance(
-                positive[0],
-                Number)):
+            positive[0],
+            Number)):
             positive = [positive]
         if not isinstance(
                 negative,
                 list) or (
                 len(negative) > 0 and isinstance(
-                negative[0],
-                Number)):
+            negative[0],
+            Number)):
             negative = [negative]
         return positive, negative
 
     def _exclude_set(self, positive, negative):
         def _is_vec(elem):
             return isinstance(elem, np.ndarray) or \
-                (isinstance(elem, list) and len(elem) > 0 and
-                 isinstance(elem[0], Number))
+                   (isinstance(elem, list) and len(elem) > 0 and
+                    isinstance(elem[0], Number))
 
         return frozenset((elem for elem in chain.from_iterable(
             [positive, negative]) if not _is_vec(elem)))
@@ -1390,7 +1389,7 @@ class Magnitude(object):
     @lru_cache(DEFAULT_LRU_CACHE_SIZE, ignore_unhashable_args=True)
     def closer_than(self, key, q, topn=None):
         """Finds all keys closer to key than q is to key."""
-        epsilon = (10.0 / 10**6)
+        epsilon = (10.0 / 10 ** 6)
         min_similarity = self.similarity(key, q) + epsilon
 
         return self.most_similar(key, topn=topn, min_similarity=min_similarity,
@@ -1570,7 +1569,7 @@ class Magnitude(object):
         except BaseException:
             pass
         if (hasattr(self, 'MMAP_PROCESS_LOCK') and
-            hasattr(self.MMAP_PROCESS_LOCK, 'lockfile') and
+                hasattr(self.MMAP_PROCESS_LOCK, 'lockfile') and
                 self.MMAP_PROCESS_LOCK.lockfile is not None):
             try:
                 self.MMAP_PROCESS_LOCK.lockfile.close()
@@ -1602,7 +1601,6 @@ class FeaturizerMagnitude(Magnitude):
     """
 
     def __init__(self, number_of_values=1000000, namespace=None, **kwargs):
-
         self.namespace = namespace
 
         super(
@@ -1615,7 +1613,6 @@ class FeaturizerMagnitude(Magnitude):
 
 
 class ConcatenatedMagnitude(object):
-
     """A ConcatenatedMagnitude class that acts as a concatenated interface
     to querying multiple magnitude objects.
 
@@ -1689,7 +1686,7 @@ class ConcatenatedMagnitude(object):
         v = [m.query(self._take(q, multikey, i), normalized=(
             normalized if normalized is not None else m.normalized
         ))
-            for i, m in enumerate(self.magnitudes)]
+             for i, m in enumerate(self.magnitudes)]
 
         if not isinstance(q, list):  # Single key
             return self._hstack(v, self.use_numpy)
@@ -1734,12 +1731,12 @@ class MagnitudeUtils(object):
             if int_to_class_map is None:
                 int_to_class_map = {v: k
                                     for k, v in (
-                                        (
-                                            hasattr(class_to_int_map, 'iteritems') and  # noqa
-                                            class_to_int_map.iteritems
-                                        ) or
+                                            (
+                                                    hasattr(class_to_int_map, 'iteritems') and  # noqa
+                                                    class_to_int_map.iteritems
+                                            ) or
 
-                                        class_to_int_map.items
+                                            class_to_int_map.items
                                     )()}
             return int_to_class_map[i]
 
@@ -1767,4 +1764,3 @@ class MagnitudeUtils(object):
     def from_categorical(categorical):
         """Converts a binary class matrix to a class vector (integers)"""
         return np.argmax(categorical, axis=1)
-
