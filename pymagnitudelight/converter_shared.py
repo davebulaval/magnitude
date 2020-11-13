@@ -1,8 +1,9 @@
 import hashlib
-import numpy as np
 import os
-
 from itertools import islice, chain
+
+import numpy as np
+
 try:
     from itertools import imap
 except ImportError:
@@ -11,7 +12,6 @@ try:
     xrange
 except NameError:
     xrange = range
-
 
 DEFAULT_PRECISION = 7
 DEFAULT_NGRAM_BEG = 3
@@ -56,6 +56,7 @@ def char_ngrams(key, beg, end):
 
 def norm_matrix(m):
     return m / np.linalg.norm(m, axis=1).reshape((-1, 1))
+
 
 def ibatch(iterable, size):
     sourceiter = iter(iterable)

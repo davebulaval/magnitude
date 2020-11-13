@@ -4,7 +4,7 @@ with open("README.md", "r") as f:
     DESCRIPTION = f.read()
 
 setup(name="pymagnitude-light",
-      version="0.1.146",
+      version="0.1.147",
       description="Magnitude fork that only supports Word2Vec, GloVe and fastText embeddings",
       long_description=DESCRIPTION,
       long_description_content_type="text/markdown",

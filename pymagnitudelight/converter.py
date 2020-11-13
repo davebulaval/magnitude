@@ -2,18 +2,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-import io
-import sqlite3
-import sys
 import argparse
-import lz4.frame
+import io
+import os
+import sys
 import tempfile
-import numpy as np
-
 from collections import Counter
 from functools import partial
-from itertools import tee, chain
+from itertools import tee
+
+import lz4.frame
+import numpy as np
+from annoy import AnnoyIndex
+from gensim.models import FastText
 
 try:
     from itertools import imap
@@ -24,15 +25,17 @@ try:
 except ImportError:
     izip = zip
 
-from pymagnitude.converter_shared import DEFAULT_PRECISION
-from pymagnitude.converter_shared import DEFAULT_NGRAM_BEG
-from pymagnitude.converter_shared import DEFAULT_NGRAM_END
-from pymagnitude.converter_shared import SQLITE_TOKEN_SPLITTERS
-from pymagnitude.converter_shared import BOW
-from pymagnitude.converter_shared import EOW
-from pymagnitude.converter_shared import CONVERTER_VERSION
+import sqlite3
 
-from pymagnitude import Magnitude, FeaturizerMagnitude
+SQLITE_LIB = 'system'
+
+from pymagnitudelight.converter_shared import DEFAULT_PRECISION
+from pymagnitudelight.converter_shared import DEFAULT_NGRAM_BEG
+from pymagnitudelight.converter_shared import DEFAULT_NGRAM_END
+from pymagnitudelight.converter_shared import SQLITE_TOKEN_SPLITTERS
+from pymagnitudelight.converter_shared import BOW
+from pymagnitudelight.converter_shared import EOW
+from pymagnitudelight.converter_shared import CONVERTER_VERSION
 
 
 def try_deleting(path):
@@ -55,18 +58,19 @@ def entropy(counter):
     return -probs.dot(np.log2(probs))
 
 
-from pymagnitude.converter_shared import fast_md5_file
-from pymagnitude.converter_shared import char_ngrams
-from pymagnitude.converter_shared import ibatch
+from pymagnitudelight.converter_shared import fast_md5_file
+from pymagnitudelight.converter_shared import char_ngrams
 
 
 def convert(input_file_path, output_file_path=None,
             precision=DEFAULT_PRECISION, subword=False,
             subword_start=DEFAULT_NGRAM_BEG,
-            subword_end=DEFAULT_NGRAM_END):
-
+            subword_end=DEFAULT_NGRAM_END,
+            approx=False, approx_trees=None,
+            vocab_path=None):
     files_to_remove = []
     subword = int(subword)
+    approx = int(approx)
 
     # If no output_file_path specified, create it in a tempdir
     if output_file_path is None:
@@ -91,7 +95,7 @@ def convert(input_file_path, output_file_path=None,
     meta_1_path = None
     meta_2_path = None
     input_is_text = input_file_path.endswith('.txt') or \
-        input_file_path.endswith('.vec')
+                    input_file_path.endswith('.vec')
     input_is_binary = input_file_path.endswith('.bin')
     input_is_hdf5 = input_file_path.endswith('.hdf5')
     input_is_hdf5_weights = input_file_path.endswith('_weights.hdf5')
@@ -99,6 +103,23 @@ def convert(input_file_path, output_file_path=None,
         exit("The input file path must be `.txt`, `.bin`, `.vec`, or `.hdf5`")
     if not output_file_path.endswith('.magnitude'):
         exit("The output file path file path must be `.magnitude`")
+    if vocab_path and not vocab_path.endswith(".magnitude"):
+        exit("The vocab file path file path must be `.magnitude`")
+
+    # Detect ELMo and ELMo options file
+    input_is_elmo = False
+    elmo_options_path = None
+    if input_is_hdf5:
+        elmo_options_path = input_file_path[0:-13] + \
+                            '_options.json' if input_is_hdf5_weights else input_file_path[0:-5] + '.json'  # noqa
+        if not os.path.isfile(elmo_options_path):
+            exit(
+                "Expected `" +
+                elmo_options_path +
+                "` to exist. ELMo models require a JSON options file.")
+        input_is_elmo = True
+        meta_1_path = input_file_path
+        meta_2_path = elmo_options_path
 
     # Detect GloVe format and convert to word2vec if detected
     detected_glove = False
@@ -147,10 +168,10 @@ def convert(input_file_path, output_file_path=None,
         except ImportError:
             raise ImportError("You need gensim >= 3.3.0 installed with pip \
                 (`pip install gensim`) to convert binary files.")
-        keyed_vectors = KeyedVectors.load_word2vec_format(
-            input_file_path, binary=input_is_binary)
-        number_of_keys = len(keyed_vectors.vectors)
-        dimensions = len(keyed_vectors.vectors[0])
+        keyed_vectors = FastText.load_fasttext_format(
+            input_file_path)
+        number_of_keys = len(keyed_vectors.wv.vectors)
+        dimensions = len(keyed_vectors.wv.vectors[0])
     elif input_is_text:
         # Read it manually instead of with gensim so we can stream large models
         class KeyedVectors:
@@ -181,6 +202,7 @@ def convert(input_file_path, output_file_path=None,
                     vector = np.asarray([float(elem)
                                          for elem in vec_floats])
                     yield (key, vector)
+
         keyed_vectors = KeyedVectors()
         kv_gen = keyed_vectors_generator()
         number_of_keys, dimensions = next(kv_gen)
@@ -190,6 +212,7 @@ def convert(input_file_path, output_file_path=None,
     else:
         class KeyedVectors:
             pass
+
         keyed_vectors = KeyedVectors()
         number_of_keys = 0
         dimensions = 0
@@ -251,6 +274,13 @@ def convert(input_file_path, output_file_path=None,
                 num_ngrams
             );
         """)
+    if approx:
+        db.execute("""
+            CREATE TABLE `magnitude_approx` (
+                trees INTEGER,
+                index_file BLOB
+            );
+        """)
 
     metas = [('meta_1', meta_1_path), ('meta_2', meta_2_path)]
     for meta_name, meta_path in metas:
@@ -261,19 +291,24 @@ def convert(input_file_path, output_file_path=None,
                 );
             """)
 
+    # Create annoy index
+    approx_index = None
+    if approx:
+        approx_index = AnnoyIndex(dimensions)
+
     # Write vectors
     eprint("Writing vectors... (this may take some time)")
     insert_query = """
         INSERT INTO `magnitude`(
             key,
             """ + \
-        ",\n".join([("dim_%d" % i) for i in range(dimensions)]) + \
-        ",\nmagnitude" \
-        + """)
+                   ",\n".join([("dim_%d" % i) for i in range(dimensions)]) + \
+                   ",\nmagnitude" \
+                   + """)
         VALUES (
             """ + \
-        (",\n".join(["?"] * (dimensions + 2))) \
-        + """
+                   (",\n".join(["?"] * (dimensions + 2))) \
+                   + """
         );
     """
     insert_subword_query = """
@@ -286,7 +321,7 @@ def convert(input_file_path, output_file_path=None,
         );
     """
     counters = [Counter() for i in range(dimensions)]
-    key_vectors_iterable = izip(keyed_vectors.index2word, keyed_vectors.vectors)
+    key_vectors_iterable = izip(keyed_vectors.wv.index2word, keyed_vectors.wv.vectors)
     progress = -1
     db.execute("BEGIN;")
     for i, (key, vector) in enumerate(key_vectors_iterable):
@@ -300,11 +335,11 @@ def convert(input_file_path, output_file_path=None,
         magnitude = np.linalg.norm(vector)
         vector = vector / magnitude
         epsilon = np.random.choice(
-            [-1.0 / (10**precision), 1.0 / (10**precision)], dimensions)
+            [-1.0 / (10 ** precision), 1.0 / (10 ** precision)], dimensions)
         vector = epsilon if np.isnan(vector).any() else vector
         for d, v in enumerate(vector):
             counters[d][int(v * 100)] += 1
-        db.execute(insert_query, (key,) + tuple(int(round(v * (10**precision)))
+        db.execute(insert_query, (key,) + tuple(int(round(v * (10 ** precision)))
                                                 for v in vector) + (float(magnitude),))  # noqa
         if subword:
             ngrams = set(
@@ -317,6 +352,8 @@ def convert(input_file_path, output_file_path=None,
                 [c in SQLITE_TOKEN_SPLITTERS for c in n])))
             db.execute(insert_subword_query,
                        (" ".join(ngrams), num_ngrams))
+        if approx:
+            approx_index.add_item(i, vector)
     eprint("Committing written vectors... (this may take some time)")
     db.execute("COMMIT;")
 
@@ -339,6 +376,7 @@ def convert(input_file_path, output_file_path=None,
     """
 
     db.execute(insert_format_query, ('version', CONVERTER_VERSION))
+    db.execute(insert_format_query, ('elmo', input_is_elmo))
     db.execute(insert_format_query, ('size', number_of_keys))
     db.execute(insert_format_query, ('dim', dimensions))
     db.execute(insert_format_query, ('precision', precision))
@@ -346,6 +384,11 @@ def convert(input_file_path, output_file_path=None,
         db.execute(insert_format_query, ('subword', subword))
         db.execute(insert_format_query, ('subword_start', subword_start))
         db.execute(insert_format_query, ('subword_end', subword_end))
+    if approx:
+        if approx_trees is None:
+            approx_trees = max(50, int((number_of_keys / 3000000.0) * 50.0))
+        db.execute(insert_format_query, ('approx', approx))
+        db.execute(insert_format_query, ('approx_trees', approx_trees))
     for d in highest_entropy_dimensions:
         db.execute(insert_format_query, ('entropy', d))
 
@@ -358,6 +401,41 @@ def convert(input_file_path, output_file_path=None,
         db.execute("""
             CREATE INDEX `magnitude_dim_%d_idx` ON `magnitude` (dim_%d);
         """ % (i, i))
+
+    # Write approximate index to the database
+    if approx:
+        eprint("Creating approximate nearest neighbors index... \
+(this may take some time)")
+        approx_index.build(approx_trees)
+        approx_index_file_path = os.path.join(
+            tempfile.mkdtemp(),
+            fast_md5_file(input_file_path) + '.ann')
+        eprint("Dumping approximate nearest neighbors index... \
+(this may take some time)")
+        approx_index.save(approx_index_file_path)
+        eprint("Compressing approximate nearest neighbors index... \
+(this may take some time)")
+        chunk_size = 104857600
+        full_size = os.path.getsize(approx_index_file_path)
+        insert_approx_query = """
+            INSERT INTO magnitude_approx(trees, index_file) VALUES (?, ?);
+        """
+        with open(approx_index_file_path, 'rb') as ifh, \
+                lz4.frame.LZ4FrameCompressor() as compressor:
+            for i, chunk in enumerate(iter(partial(ifh.read, chunk_size), b'')):
+                if i == 0:
+                    chunk = compressor.begin() + compressor.compress(chunk)
+                else:
+                    chunk = compressor.compress(chunk)
+                eprint(str((ifh.tell() / float(full_size)) * 100.0) + "%")
+                if len(chunk) > 0:
+                    db.execute(insert_approx_query,
+                               (approx_trees, sqlite3.Binary(chunk)))
+            chunk = compressor.flush()
+            if len(chunk) > 0:
+                db.execute(insert_approx_query,
+                           (approx_trees, sqlite3.Binary(chunk)))
+        files_to_remove.append(approx_index_file_path)
 
     for meta_name, meta_path in metas:
         if not meta_path:
@@ -467,20 +545,37 @@ if __name__ == "__main__":
 (default: %d,%d)"
                                 % (DEFAULT_NGRAM_BEG, DEFAULT_NGRAM_END)),
         type=str, default=("%d,%d" % (DEFAULT_NGRAM_BEG, DEFAULT_NGRAM_END)))
+    parser.add_argument(
+        "-a", "--approx", action='store_true',
+        help="build an index for approximate nearest neighbors for the \
+`most_similar_approx()` function. (uses a lot of space, but approximate most \
+similar queries are faster)")
+    parser.add_argument(
+        "-t", "--trees", type=int,
+        help=("number of trees for the approximate nearest neighbors index. \
+If not provided, this will be determined automatically. (higher number uses \
+more space, but makes approximate most similar queries more accurate)"))
+    parser.add_argument(
+        "-v", "--vocab", type=str,
+        help=("path to a `.magnitude` file to use as a vocabulary when \
+converting vocabulary-less models like ELMo."))
     args = parser.parse_args()
 
     input_file_path = os.path.expanduser(args.input)
     output_file_path = os.path.expanduser(args.output)
     precision = args.precision
-    subword = not(args.subword_off)
+    subword = not (args.subword_off)
     subword_start = int(args.window.split(",")[0])
     subword_end = int(args.window.split(",")[1])
+    approx = args.approx
+    approx_trees = args.trees if hasattr(args, 'trees') else None
+    vocab_path = os.path.expanduser(args.vocab) if args.vocab else args.vocab
 
     if os.path.isdir(input_file_path) and os.path.isdir(output_file_path):
         for file in os.listdir(input_file_path):
             if (file.endswith(".txt") or
-                file.endswith(".bin") or
-                file.endswith(".vec") or
+                    file.endswith(".bin") or
+                    file.endswith(".vec") or
                     file.endswith(".hdf5")):
                 ext = '.magnitude'
                 split_file_name = os.path.basename(file).split(".")
@@ -491,9 +586,12 @@ if __name__ == "__main__":
                         os.path.join(output_file_path, output_file),
                         precision=precision, subword=subword,
                         subword_start=subword_start,
-                        subword_end=subword_end)
+                        subword_end=subword_end,
+                        approx=approx, approx_trees=approx_trees)
     else:
         convert(input_file_path, output_file_path,
                 precision=precision, subword=subword,
                 subword_start=subword_start,
-                subword_end=subword_end)
+                subword_end=subword_end,
+                approx=approx, approx_trees=approx_trees,
+                vocab_path=vocab_path)
