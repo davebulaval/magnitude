@@ -1,4 +1,5 @@
 # Magnitude fork that only supports Word2Vec, GloVe and fastText embeddings
+> I've forked the [other lite version](https://github.com/neuml/magnitude) since package naming was bad and was sometime mixup with the original one
 
 This repository makes the following changes to the excellent Magnitude project: 
 

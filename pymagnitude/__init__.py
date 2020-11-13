@@ -37,7 +37,7 @@ from pymagnitude.converter_shared import fast_md5_file
 from pymagnitude.converter_shared import char_ngrams
 from pymagnitude.converter_shared import norm_matrix
 from pymagnitude.converter_shared import KeyList
-from pymagnitude.third_party.repoze.lru import lru_cache
+from pymagnitude.pymagnitude_light.repoze.lru import lru_cache
 
 try:
     from itertools import imap
