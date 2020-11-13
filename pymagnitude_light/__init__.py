@@ -30,14 +30,14 @@ from itertools import cycle, islice, chain, product, tee
 from numbers import Number
 from time import sleep
 
-from pymagnitude.converter_shared import DEFAULT_NGRAM_END
-from pymagnitude.converter_shared import BOW, EOW
-from pymagnitude.converter_shared import CONVERTER_VERSION
-from pymagnitude.converter_shared import fast_md5_file
-from pymagnitude.converter_shared import char_ngrams
-from pymagnitude.converter_shared import norm_matrix
-from pymagnitude.converter_shared import KeyList
-from pymagnitude.pymagnitude_light.repoze.lru import lru_cache
+from pymagnitude_light.converter_shared import DEFAULT_NGRAM_END
+from pymagnitude_light.converter_shared import BOW, EOW
+from pymagnitude_light.converter_shared import CONVERTER_VERSION
+from pymagnitude_light.converter_shared import fast_md5_file
+from pymagnitude_light.converter_shared import char_ngrams
+from pymagnitude_light.converter_shared import norm_matrix
+from pymagnitude_light.converter_shared import KeyList
+from pymagnitude_light.pymagnitude_light.repoze.lru import lru_cache
 
 try:
     from itertools import imap
@@ -264,14 +264,14 @@ class Magnitude(object):
                     this faster pre-convert your vector model to the
                     `.magnitude` format with the built-in command utility:
 
-                    `python -m pymagnitude.converter -i input_file -o output_file`
+                    `python -m pymagnitude_light.converter -i input_file -o output_file`
 
                     Refer to the README for more information.
 
                     You can pass `supress_warnings=True` to the constructor to
                     hide this message.""")  # noqa
                 sys.stdout.flush()
-            from pymagnitude.converter_shared import convert as convert_vector_file  # noqa
+            from pymagnitude_light.converter_shared import convert as convert_vector_file  # noqa
             self.path = convert_vector_file(self.path)
 
         # Open a read-only file descriptor against the file
