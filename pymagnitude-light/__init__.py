@@ -264,7 +264,7 @@ class Magnitude(object):
                     this faster pre-convert your vector model to the
                     `.magnitude` format with the built-in command utility:
 
-                    `python -m light.converter -i input_file -o output_file`
+                    `python -m framework.converter -i input_file -o output_file`
 
                     Refer to the README for more information.
 
