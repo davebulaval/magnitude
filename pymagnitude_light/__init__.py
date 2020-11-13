@@ -37,7 +37,7 @@ from pymagnitude_light.converter_shared import fast_md5_file
 from pymagnitude_light.converter_shared import char_ngrams
 from pymagnitude_light.converter_shared import norm_matrix
 from pymagnitude_light.converter_shared import KeyList
-from pymagnitude_light.pymagnitude_light.repoze.lru import lru_cache
+from pymagnitude_light.framework.repoze.lru import lru_cache
 
 try:
     from itertools import imap
@@ -264,7 +264,7 @@ class Magnitude(object):
                     this faster pre-convert your vector model to the
                     `.magnitude` format with the built-in command utility:
 
-                    `python -m pymagnitude_light.converter -i input_file -o output_file`
+                    `python -m framework.converter -i input_file -o output_file`
 
                     Refer to the README for more information.
 
