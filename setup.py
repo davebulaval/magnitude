@@ -3,7 +3,7 @@ from setuptools import find_packages, setup
 with open("README.md", "r") as f:
     DESCRIPTION = f.read()
 
-setup(name="framework-light",
+setup(name="light-light",
       version="0.1.143",
       description="Magnitude fork that only supports Word2Vec, GloVe and fastText embeddings",
       long_description=DESCRIPTION,

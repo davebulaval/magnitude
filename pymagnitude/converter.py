@@ -24,15 +24,15 @@ try:
 except ImportError:
     izip = zip
 
-from pymagnitude_light.converter_shared import DEFAULT_PRECISION
-from pymagnitude_light.converter_shared import DEFAULT_NGRAM_BEG
-from pymagnitude_light.converter_shared import DEFAULT_NGRAM_END
-from pymagnitude_light.converter_shared import SQLITE_TOKEN_SPLITTERS
-from pymagnitude_light.converter_shared import BOW
-from pymagnitude_light.converter_shared import EOW
-from pymagnitude_light.converter_shared import CONVERTER_VERSION
+from pymagnitude.converter_shared import DEFAULT_PRECISION
+from pymagnitude.converter_shared import DEFAULT_NGRAM_BEG
+from pymagnitude.converter_shared import DEFAULT_NGRAM_END
+from pymagnitude.converter_shared import SQLITE_TOKEN_SPLITTERS
+from pymagnitude.converter_shared import BOW
+from pymagnitude.converter_shared import EOW
+from pymagnitude.converter_shared import CONVERTER_VERSION
 
-from pymagnitude_light import Magnitude, FeaturizerMagnitude
+from pymagnitude import Magnitude, FeaturizerMagnitude
 
 
 def try_deleting(path):
@@ -55,9 +55,9 @@ def entropy(counter):
     return -probs.dot(np.log2(probs))
 
 
-from pymagnitude_light.converter_shared import fast_md5_file
-from pymagnitude_light.converter_shared import char_ngrams
-from pymagnitude_light.converter_shared import ibatch
+from pymagnitude.converter_shared import fast_md5_file
+from pymagnitude.converter_shared import char_ngrams
+from pymagnitude.converter_shared import ibatch
 
 
 def convert(input_file_path, output_file_path=None,

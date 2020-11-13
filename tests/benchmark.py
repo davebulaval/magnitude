@@ -17,7 +17,7 @@ from random import seed, randint
 from itertools import islice
 from gensim.models import KeyedVectors
 
-from pymagnitude_light import Magnitude
+from pymagnitude import Magnitude
 
 
 BIN_PATH = sys.argv[1]

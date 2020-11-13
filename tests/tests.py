@@ -10,7 +10,7 @@ import sys
 import tempfile
 import unittest
 
-from pymagnitude_light import Magnitude, FeaturizerMagnitude, MagnitudeUtils
+from pymagnitude import Magnitude, FeaturizerMagnitude, MagnitudeUtils
 from numpy import isclose, asarray
 
 try:
